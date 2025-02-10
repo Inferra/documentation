@@ -1,0 +1,73 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Inferra.net Docuemntation",
+  "colors": {
+    "primary": "#2b9639",
+    "light": "#2b9639",
+    "dark": "#15803D"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "batch-api"
+            ]
+          },
+          {
+            "group": "Resources",
+            "pages": [
+              "resources/models",
+              "resources/rate-limits",
+              "resources/faq"
+            ]
+          }
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "Documentation",
+          "href": "https://docs.inferra.net/introduction",
+          "icon": "book-open-cover"
+        },
+        {
+          "anchor": "Dashboard",
+          "href": "https://mintlify.com/community",
+          "icon": "code"
+        },
+        {
+          "anchor": "Support",
+          "href": "mailto:support@inferra.net",
+          "icon": "headset"
+        }
+      ]
+    }
+  },
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Support",
+        "href": "mailto:support@inferra.net"
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/mintlify",
+      "github": "https://github.com/inferra"
+    }
+  }
+}

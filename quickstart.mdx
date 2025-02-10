@@ -1,0 +1,119 @@
+---
+title: "Quickstart"
+description: "Get started using with Inferra's APIs"
+---
+
+## Get an API key
+
+1. Visit [inferra.net](https://inferra.net/) and create an account.
+
+2. On the dashboard, visit the `API Keys` tab on the left sidebar. Create an API key or use the default key.
+
+3. Copy the API key to your clipboard by clicking the copy icon to the right of the key.
+
+4. In your terminal, set the `INFERRA_API_KEY` environment variable to the API key you copied.
+
+```javascript
+export INFERRA_API_KEY=<your-api-key>
+```
+
+## Test Request
+
+Perform a simple curl request to the Inferra API.
+
+```bash
+curl -N https://api.inferra.net/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $INFERRA_API_KEY" \
+  -d '{
+    "model": "meta-llama/llama-3.1-8b-instruct/fp-8",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are a helpful assistant."
+      },
+      {
+        "role": "user",
+        "content": "What is the meaning of life?"
+      }
+    ],
+    "stream": true
+  }'
+```
+
+The request output should stream into your terminal.
+
+## OpenAI SDK
+
+Inferra is compatible with the OpenAI Chat API. You can use the official [OpenAI SDK](https://platform.openai.com/docs/libraries) to interact with the Inferra API.
+
+We support both streaming and non-streaming requests, as well as the following parameters:
+
+* `max_tokens`
+
+* `temperature`
+
+* `top_p`
+
+* `frequency_penalty`
+
+* `presence_penalty`
+
+If you need parameters that are not list here, please contact us and we’ll add them.
+
+**Note:** Make sure you export the `INFERRA_API_KEY` environment variable before running the code below.
+
+### [​](https://docs.inferra.net/quickstart#python)&#xA;Python
+
+```python
+import os
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://api.inferra.net/v1",
+    api_key=os.environ.get("INFERRA_API_KEY"),
+)
+
+response = client.chat.completions.create(
+    model="meta-llama/llama-3.1-8b-instruct/fp-8",
+    messages=[{"role": "user", "content": "What is the meaning of life?"}],
+    stream=True,
+)
+
+for chunk in response:
+    if chunk.choices[0].delta.content is not None:
+        print(chunk.choices[0].delta.content, end='', flush=True)
+```
+
+### Bun / Node.js
+
+```javascript
+import OpenAI from "openai";
+
+const openai = new OpenAI({
+  baseURL: "https://api.inferra.net/v1",
+  apiKey: process.env.INFERRA_API_KEY,
+});
+
+const completion = await openai.chat.completions.create({
+  model: "meta-llama/llama-3.1-8b-instruct/fp-8",
+  messages: [{ role: "user", content: "What is the meaning of life?" }],
+  stream: true,
+});
+
+for await (const chunk of completion) {
+  process.stdout.write(chunk.choices[0]?.delta.content || '');
+}
+```
+
+### Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Batch Processing" icon="list-check" href="/batch-api">
+    [Process multiple asynchronous requests in a single API call and retrieve results](https://docs.inferra.net/batch-api)
+  </Card>
+
+  <Card title="View Models" icon="wand-magic-sparkles" href="/resources/models">
+    [Explore the models available in Inferra](https://docs.inferra.net/resources/models)
+  </Card>
+</CardGroup>

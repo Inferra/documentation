@@ -1,0 +1,342 @@
+---
+title: "Batch API"
+description: "Process jobs asynchronously with Batch API."
+---
+
+Learn how to use our OpenAI-compatible Batch API to send asynchronous groups of inferra requests to Inferra, with nearly unlimited rate limits and fast completion times. The service is ideal for processing a large number of jobs that don’t require immediate responses.
+
+<Info>
+  Batch API is currently is compatible with all the [models](https://docs.inferra.net/resources/models) we offer.
+</Info>
+
+## Overview
+
+While some uses require you to send synchronous requests, there are many cases where requests do not need an immediate response or rate limits prevent you from executing a large number of queries quickly. Batch processing jobs are often helpful in use cases like:
+
+1. Extracting structured data from a large number of documents.
+
+2. Generating synthetic data for training.
+
+3. Translating a large number of documents into other languages.
+
+4. Summarizing a large number of customer interactions.
+
+Inferra’s Batch API offers a straightforward set of endpoints that allow you to uploads a batch of requests, kick off a batch processing job, query for the status of the batch, and eventually retrieve the collected results when the batch is complete.
+
+Compared to using standard endpoints directly, Batch API has:
+
+1. **Higher rate limits:** Substantially more headroom compared to the [synchronous APIs](https://docs.inferra.net/resources/rate-limits).
+
+2. **Fast completion times:** Each batch completes within 24 hours (and often much more quickly).
+
+[​](https://docs.inferra.net/batch-api#getting-started)
+Getting Started
+---------------
+
+You’ll need an Inferra account and API key to use the Batch API. See our [Quick Start Guide](https://docs.inferra.net/quickstart) for instructions on how to create an account and get an API key.
+
+Install the [OpenAI SDK](https://platform.openai.com/docs/libraries) for your language of choice. To connect to Inferra using the OpenAI SDK, you will need to set the`baseURL` to [`https://batch.inferra.net/v1`](https://batch.inferra.net/v1) and the `apiKey` to your Inferra API key, as shown below:
+
+<CodeGroup>
+  ```javascript JavaScript
+  import OpenAI from "openai";
+
+  const openai = new OpenAI({
+      baseURL: "https://batch.inferra.net/v1",
+      apiKey: "<api-key>", // Use your actual API key
+  });
+  ```
+
+  ```python Python
+  from openai import OpenAI
+
+  openai = OpenAI(
+      base_url="https://batch.inferra.net/v1"
+      api_key="<api-key>", # Use your actual API key
+  )
+  ```
+</CodeGroup>
+
+## Running A Batch Processing Job
+
+### [​](https://docs.inferra.net/batch-api#1-preparing-your-batch-file)&#xA;1\. Preparing Your Batch File
+
+Prepare a `.jsonl` file where each line is a separate JSON object that represents an individual request. Each JSON object must be on a single line and cannot contain any line breaks. Each JSON object must include the following fields:
+
+* `custom_id`: A unique identifier for the request. This is used to reference the request’s results after completion. It must be unique for each request in the file.
+
+* `method`: The HTTP method to use for the request. Currently, only POST is supported.
+
+* `url`: The URL to send the request to. Currently, only `/v1/chat/completions` and `/v1/completions` are supported.
+
+* `body`: The request body, which contains the input for the inferra request. The parameters in each line’s `body` field are the same as the parameters for the underlying endpoint specified by the `url` field. See this [example](https://docs.inferra.net/quickstart#test-request) for more details.
+
+Here’s an example of an input file with 2 requests using the `/v1/chat/completions` endpoint.
+
+```javascript
+{"custom_id": "request-1", "method": "POST", "url": "/v1/chat/completions", "body": {"model": "meta-llama/llama-3.2-1b-instruct/fp-8", "messages": [{"role": "system", "content": "You are a helpful assistant."}, {"role": "user", "content": "What is the capital of France?"}], "max_tokens": 1000}}
+{"custom_id": "request-2", "method": "POST", "url": "/v1/chat/completions", "body": {"model": "meta-llama/llama-3.2-1b-instruct/fp-8", "messages": [{"role": "system", "content": "You are an unhelpful assistant."}, {"role": "user", "content": "What is the capital of Belgium?"}], "max_tokens": 1000}}
+```
+
+And here is an example of an input file using the `/v1/completions` endpoint:
+
+```javascript
+{"custom_id": "request-1", "method": "POST", "url": "/v1/completions", "body": {"model": "meta-llama/llama-3.2-1b-instruct/fp-8", "prompt": "What is the capital of France?", "max_tokens": 1000}}
+{"custom_id": "request-2", "method": "POST", "url": "/v1/completions", "body": {"model": "meta-llama/llama-3.2-1b-instruct/fp-8", "prompt": "What is the capital of Belgium?", "max_tokens": 1000}}
+```
+
+### &#xA;2\. Uploading Your Batch Input File
+
+In order to create a Batch Processing job, you must first upload your input file.
+
+<CodeGroup>
+  ```javascript JavaScript
+  import fs from "fs";
+
+  const batchInputFile = await openai.files.create({
+    file: fs.createReadStream("batchinput.jsonl"),
+    purpose: "batch",
+  });
+
+  console.log(batchInputFile);
+  ```
+
+  ```python Python
+  batch_input_file = openai.files.create(
+      file=open("batchinput.jsonl", "rb"),
+      purpose="batch"
+  )
+
+  print(batch_input_file)
+  ```
+
+  ```bash cURL
+  curl https://batch.inferra.net/v1/files \
+    -H "Authorization: Bearer $INFERRA_API_KEY" \
+    -F purpose="batch" \
+    -F file="@batchinput.jsonl"
+  ```
+</CodeGroup>
+
+The response will look similar to this, depending on the language you are using:
+
+```bash
+{
+  id: "file-abc123",
+  ...
+}
+```
+
+### &#xA;3\. Starting the Batch Processing Job
+
+Once you’ve successfully uploaded your input file, you can use the ID of the file to create a batch. In this case, let’s assume the file ID is `file-abc123`. For now, the completion window can only be set to `24h`. To associate custom metadata with the batch, you can provide an optional `metadata` parameter. This metadata is not used by Inferra to complete requests, but it is included when retrieving the status of a batch so that you can associate custom metadata with the batch.
+
+> **Note:** The Batch Processing job will begin processing immediately after creation.
+
+Create the Batch
+
+<CodeGroup>
+  ```javascript JavaScript
+  const batch = await openai.batches.create({
+    input_file_id: "file-abc123", // this is returned from the files.create call
+    endpoint: "/v1/chat/completions",
+    completion_window: "24h",
+    metadata: {
+      "description": "nightly eval job"
+    }
+  });
+
+  console.log(batch);
+  ```
+
+  ```python Python
+  batch = openai.batches.create(
+      input_file_id="file-abc123", # this is returned from the files.create call
+      endpoint="/v1/chat/completions",
+      completion_window="24h",
+      metadata={
+          "description": "nightly eval job"
+      }
+  )
+
+  print(batch)
+  ```
+
+  ```bash cURL
+  curl https://batch.inferra.net/v1/batches \
+    -H "Authorization: Bearer $INFERRA_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "input_file_id": "file-abc123",
+      "endpoint": "/v1/chat/completions",
+      "completion_window": "24h",
+      "metadata": {
+        "description": "nightly eval job"
+      }
+    }'
+  ```
+</CodeGroup>
+
+This request will return a batch object with metadata about your batch:
+
+```javascript
+{
+  "id": "batch_abc123",
+  "object": "batch",
+  "endpoint": "/v1/chat/completions",
+  "errors": null,
+  "input_file_id": "file-abc123",
+  "completion_window": "24h",
+  "status": "validating",
+  "output_file_id": null,
+  "error_file_id": null,
+  "created_at": 1714508499,
+  "in_progress_at": 1714508500,
+  "expires_at": 1714536634,
+  "completed_at": null,
+  "failed_at": null,
+  "expired_at": null,
+  "request_counts": {
+    "total": 2,
+    "completed": 0,
+    "failed": 0
+  },
+  "metadata": {
+    "description": "nightly eval job"
+  }
+}
+```
+
+### 4. Checking the Status of a Batch
+
+You can check the status of a batch at any time, which will also return a Batch object.
+
+Check the status of a batch by retrieving it using the Batch ID assigned to it by Inferra (represented here by `batch_abc123`).
+
+<CodeGroup>
+  ```javascript JavaScript
+  const retrievedBatch = await openai.batches.retrieve("batch_abc123");
+  console.log(retrievedBatch);
+  ```
+
+  ```python Python
+  batch = openai.batches.retrieve("batch_abc123")
+  print(batch)
+  ```
+
+  ```
+  console.log("Hello World");
+  ```
+
+  ```bash cURL
+  curl https://batch.inferra.net/v1/batches/batch_abc123 \
+    -H "Authorization: Bearer $INFERRA_API_KEY" \
+    -H "Content-Type: application/json"
+  ```
+</CodeGroup>
+
+The status of a given Batch object can be any of the following:
+
+| Status       | Description                                                                    |
+| ------------ | ------------------------------------------------------------------------------ |
+| validating   | the input file is being validated before the batch can begin                   |
+| failed       | the input file has failed the validation process                               |
+| in\_progress | the input file was successfully validated and the batch is currently being run |
+| finalizing   | the batch has completed and the results are being prepared                     |
+| completed    | the batch has been completed and the results are ready                         |
+| expired      | the batch was not able to be completed within the 24-hour time window          |
+| cancelling   | the batch is being cancelled (may take up to 10 minutes)                       |
+| cancelled    | the batch was cancelled                                                        |
+
+### 5. Retrieving the Results
+
+You will receive an email notification when the batch is complete.
+
+Once the batch is complete, you can download the output by making a request against the Files API using the `output_file_id` field from the Batch object. Similarly, you can retrieve the error file (containing all failed requests) by making a request against the Files API using the `error_file_id` field from the Batch object. Supposing the output file ID is `output-file-id` in the following example:
+
+<CodeGroup>
+  ```javascript JavaScript
+  const fileResponse = await openai.files.content('output-file-id');
+  const fileContents = await fileResponse.text();
+
+  console.log(fileContents);
+  ```
+
+  ```python Python
+  file_response = openai.files.content('output-file-id')
+  print(file_response.text)
+  ```
+
+  ```bash cURL
+  curl https://batch.inferra.net/v1/files/output-file-id/content \
+    -H "Authorization: Bearer $INFERRA_API_KEY" > batch_output.jsonl
+  ```
+</CodeGroup>
+
+The output `.jsonl` file will have one response line for every successful request line in the input file. Any failed requests in the batch will have their error information written to an error file that can be found via the batch’s `error_file_id`.
+
+> Note that the output line order **may not match** the input line order.
+
+Instead of relying on order to process your results, use the custom\_id field which will be present in each line of your output file and allow you to map requests in your input to results in your output.
+
+```json
+{"id": "batch_req_123", "custom_id": "request-2", "response": {"status_code": 200, "request_id": "req_123", "body": {"id": "chatcmpl-123", "object": "chat.completion", "created": 1711652795, "model": "meta-llama/llama-3.2-1b-instruct/fp-8", "choices": [{"index": 0, "message": {"role": "assistant", "content": "Hello."}, "logprobs": null, "finish_reason": "stop"}], "usage": {"prompt_tokens": 22, "completion_tokens": 2, "total_tokens": 24}, "system_fingerprint": "fp_123"}}, "error": null}
+{"id": "batch_req_456", "custom_id": "request-1", "response": {"status_code": 200, "request_id": "req_789", "body": {"id": "chatcmpl-abc", "object": "chat.completion", "created": 1711652789, "model": "meta-llama/llama-3.2-1b-instruct/fp-8", "choices": [{"index": 0, "message": {"role": "assistant", "content": "Hello! How can I assist you today?"}, "logprobs": null, "finish_reason": "stop"}], "usage": {"prompt_tokens": 20, "completion_tokens": 9, "total_tokens": 29}, "system_fingerprint": "fp_3ba"}}, "error": null}
+```
+
+## Listing All Batches
+
+At any time, you can see all your batches. For users with many batches, you can use the `limit` and `after` parameters to paginate your results. If an `after` parameter is provided, the list will return batches after the specified batch ID.
+
+<CodeGroup>
+  ```javascript JavaScript
+  const list = await openai.batches.list({
+    limit: 10,
+    after: "batch_abc123"
+  });
+
+  for await (const batch of list) {
+    console.log(batch);
+  }
+  ```
+
+  ```python Python
+  batches = openai.batches.list(limit=10, after="batch_abc123")
+
+  for batch in batches:
+      print(batch)
+  ```
+
+  ```bash cURL
+  curl 'https://batch.inferra.net/v1/batches?limit=10&after=batch_abc123' \
+    -H "Authorization: Bearer $INFERRA_API_KEY" \
+    -H "Content-Type: application/json"
+  ```
+</CodeGroup>
+
+## Batch Expiration
+
+Batches that do not complete in time eventually move to an `expired` state; unfinished requests within that batch are cancelled, and any responses to completed requests are made available via the batch’s output file. You will only be charged for tokens consumed from any completed requests.
+
+Expired requests will be written to your error file with the message as shown below. You can use the `custom_id` to retrieve the request data for expired requests.
+
+```json
+{"id": "batch_req_123", "custom_id": "request-3", "response": null, "error": {"code": "batch_expired", "message": "This request could not be executed before the completion window expired."}}
+{"id": "batch_req_123", "custom_id": "request-7", "response": null, "error": {"code": "batch_expired", "message": "This request could not be executed before the completion window expired."}}
+```
+
+## Rate Limits
+
+Batch API rate limits are separate from existing per-model rate limits. A single batch may include up to 50,000 requests, and a batch input file can be up to 200 MB in size. If you need higher rate limits, please contact us at [support@inferra.net](mailto:support@inferra.net).
+
+
+Compatibility Notes
+-------------------
+
+### [​](https://docs.inferra.net/batch-api#1-batch-cancellation)&#xA;1\. Batch Cancellation
+
+Although the OpenAI SDK supports the ability to cancel an in-progress batch, Inferra does not currently support batch cancellation. This is under development and will be available soon.
+
+### [​](https://docs.inferra.net/batch-api#2-model-availability)&#xA;2\. Model Availability
+
+Inferra’s Batch Processing is compatible with all of Inferra’s supported models. See our list of [supported models](https://docs.inferra.net/resources/models) for a complete list.
