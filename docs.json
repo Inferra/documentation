@@ -3,8 +3,8 @@
   "theme": "mint",
   "name": "Inferra.net Docuemntation",
   "colors": {
-    "primary": "#2b9639",
-    "light": "#2b9639",
+    "primary": "#6FEDD6",
+    "light": "#6FEDD6",
     "dark": "#15803D"
   },
   "favicon": "/favicon.svg",
